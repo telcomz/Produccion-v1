@@ -1,0 +1,117 @@
+version: '3.8'
+
+networks:
+  iot_network:
+    driver: bridge
+
+services:
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    networks:
+      - iot_network
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    restart: always
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: ${MYSQL_USER}
+      PMA_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "${PHPMYADMIN_PORT}:80"
+    networks:
+      - iot_network
+
+  emqx:
+    image: emqx/emqx:latest
+    container_name: emqx
+    restart: always
+    environment:
+      - EMQX_DEFAULT_USER=${EMQX_DEFAULT_USER}
+      - EMQX_DEFAULT_PASS=${EMQX_DEFAULT_PASS}
+      - EMQX_LOADED_PLUGINS="emqx_auth_mysql"
+    volumes:
+      - ./auth/emqx_auth.conf:/etc/emqx/etc/plugins/emqx_auth_mysql.conf
+    ports:
+      - "${EMQX_PORT}:1883"
+      - "8883:8883"
+      - "8083:8083"
+      - "8084:8084"
+      - "18083:18083"
+    depends_on:
+      - mysql
+    networks:
+      - iot_network
+
+  nodered:
+    image: nodered/node-red:latest
+    container_name: nodered
+    restart: always
+    ports:
+      - "${NODE_RED_PORT}:1880"
+    volumes:
+      - nodered_data:/data
+    networks:
+      - iot_network
+
+  thingsboard:
+    image: thingsboard/tb-postgres:latest
+    container_name: thingsboard
+    restart: always
+    environment:
+      TB_POSTGRES_HOST: postgres
+      TB_POSTGRES_PORT: 5432
+      TB_POSTGRES_DB: ${MYSQL_DATABASE}
+      TB_POSTGRES_USER: ${MYSQL_USER}
+      TB_POSTGRES_PASSWORD: ${MYSQL_PASSWORD}
+    depends_on:
+      - postgres
+    ports:
+      - "${THINGSBOARD_PORT}:8080"
+    networks:
+      - iot_network
+
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${MYSQL_DATABASE}
+      POSTGRES_USER: ${MYSQL_USER}
+      POSTGRES_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - iot_network
+
+  homeassistant:
+    image: homeassistant/home-assistant:latest
+    container_name: homeassistant
+    restart: always
+    ports:
+      - "${HOME_ASSISTANT_PORT}:8123"
+    volumes:
+      - ./homeassistant:/config
+    depends_on:
+      - mysql
+      - emqx
+    networks:
+      - iot_network
+
+volumes:
+  mysql_data:
+  postgres_data:
+  nodered_data:
